@@ -40,7 +40,7 @@ import shutil
 import subprocess
 import sys
 
-BANNED_CHARS = ["—", "–"]
+BANNED_CHARS = ["—", "–", "“", "”"]
 
 BANNED_PHRASES = [
     # validation / sycophancy
@@ -76,8 +76,13 @@ BANNED_PHRASES = [
     "without further ado",
     "let me walk you through",
     "in today's world",
-    "in today's fast-paced world",
+    "in today's fast-paced",
     "in the ever-evolving landscape",
+    "in the dynamic world of",
+    "in the dynamic landscape of",
+    "in the world of",
+    "as the world continues to evolve",
+    "continues to evolve",
     "in the realm of",
     "when it comes to",
     "imagine a world",
@@ -133,6 +138,57 @@ BANNED_PHRASES = [
     "due to the fact that",
     "at this point in time",
     "has the ability to",
+    "moving forward",
+    "generally speaking",
+    "cannot be overstated",
+    "can't help but feel",
+    "it's important to consider",
+    "it is important to consider",
+    "key takeaways",
+    "deep dive",
+    "let's dissect",
+    "no fluff",
+    "looming challenges",
+    "shouting into the void",
+    # forced sass / hot-take openers
+    "but here's the thing",
+    "here's the thing",
+    "but here's the truth",
+    "here's the truth",
+    "here's what nobody",
+    "what nobody's saying",
+    "what nobody is saying",
+    "then i realized",
+    "hot take",
+    "unpopular opinion",
+    "let that sink in",
+    "the result?",
+    "what changed?",
+    "the kicker",
+    # universal authority without a source
+    "studies show",
+    "studies suggest",
+    "research shows",
+    "research suggests",
+    "it's no secret",
+    "it is no secret",
+    "it's well known",
+    "it is well known",
+    # fluff adverbials and stage directions
+    "with practiced efficiency",
+    "with measured steps",
+    "mastered precision",
+    "surgical precision",
+    "this is surgical",
+    # stock metaphor / phrasing
+    "delicate balance",
+    "game changer",
+    "gamechanger",
+    # model self-disclosure
+    "as a large language model",
+    "as a large-scale language model",
+    "as an ai language model",
+    "i'm just an ai",
 ]
 
 BANNED_WORDS = [
@@ -151,6 +207,11 @@ BANNED_WORDS = [
     "poised", "testament", "beacon", "cornerstone", "symphony",
     "catalyst", "crucible", "flywheel", "north star", "renowned",
     "nestled", "boasts", "breathtaking",
+    # transition filler (single words)
+    "furthermore", "moreover", "additionally", "however", "therefore",
+    "thus", "hence", "consequently", "nevertheless", "nonetheless",
+    "notably", "importantly", "albeit", "indeed", "conversely",
+    "likewise", "similarly", "game-changer",
 ]
 
 BANNED_REGEX = [
@@ -172,7 +233,24 @@ BANNED_REGEX = [
     r",\s+(highlighting|underscoring|emphasizing|reflecting|symbolizing|"
     r"showcasing|fostering|cultivating|reinforcing|demonstrating|signaling|"
     r"cementing|solidifying)\b",
+    # contrastive / inspirational pivot, with or without "but"
+    r"\b(isn't|is not|not) just\b.{1,80}?\b(it'?s|it is|they'?re|they are)\b",
+    # triad negation: "No X. No Y. Just Z." / "Not for X. Not for Y. For Z."
+    r"\bno [^.\n]+\.\s*no [^.\n]+\.\s*just\b",
+    r"\bnot for [^.\n]+\.\s*not for [^.\n]+\.\s*for\b",
+    # listicle / title formulas
+    r"\b\d+ things (you|to|i|we|that|every)\b",
+    r"\bmaster .+ in \d+ (days|weeks|minutes|steps)\b",
+    r"\bfrom [^,.\n]+ to [^,.\n]+:",
+    # repeated exclamation marks for fake drama
+    r"!{2,}",
 ]
+
+# Emoji of any kind: decorative tone markers like the ones AI sprinkles in.
+EMOJI_RE = re.compile(
+    "[\U0001F300-\U0001FAFF\U00002600-\U000026FF\U00002700-\U000027BF"
+    "\U0001F1E6-\U0001F1FF\U00002B00-\U00002BFF\U0000FE0F]"
+)
 
 JUDGE_RUBRIC = """You are a strict editor enforcing anti-AI-writing rules.
 
@@ -210,8 +288,21 @@ FAIL these, always, in any kind of writing:
   profile", "as of my last update".
 - "not X, but Y" and tagline formulas ("X reimagined", "X made simple"),
   false ranges, and rule-of-three reflexes.
-- Em or en dashes; mechanical mid-sentence boldface; Title Case headings;
-  decorative emoji.
+- Contrastive framing and inspirational pivots: "X isn't just A, it's B",
+  "this isn't about A, it's about B" (specific to abstract, fake profundity).
+- Asked-and-answered rhetorical questions: "What changed? The math did.",
+  "Why? Because ...". State the answer instead.
+- Triplet cadence used for glib authority: "fast, cheap, and out of control".
+- Forced sass and hot-take openers: "but here's the thing", "here's what
+  nobody is saying", "hot take", "let that sink in".
+- Universal authority with no source ("studies show that...", "research
+  proves"), and quotes with no real attribution.
+- Forced or unmotivated similes, especially one per sentence.
+- Double-assertion closers: a sentence that restates the previous one in vaguer
+  or grander terms ("..., so your X improves instead of Y"). Stop after the
+  concrete point.
+- Em or en dashes; smart/curly quotes; mechanical mid-sentence boldface;
+  Title Case headings; decorative emoji; repeated exclamation marks for drama.
 - Any sentence that is only decoration with no work behind it.
 
 Do not flag a plain greeting line or a plain sign-off. Do not flag a concrete
@@ -240,6 +331,8 @@ def find_static_violations(text):
     for pattern in BANNED_REGEX:
         if re.search(pattern, lower, flags=re.DOTALL):
             violations.append(f"banned pattern: {pattern}")
+    for ch in sorted(set(EMOJI_RE.findall(text))):
+        violations.append(f"banned emoji: {ch}")
     return sorted(set(violations))
 
 
