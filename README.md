@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="voice" width="820">
+  <img src="assets/voice.svg" alt="voice" width="820">
 </p>
 
 <p align="center">
@@ -66,7 +66,8 @@ git clone https://github.com/lanmalkieri/voice ~/.claude/skills/voice
 
 ```
 
-### :kiss: Or just point Claude Code to this repo and ask to set it up for you. Waste those tokens on trivial tasks! :kiss:
+### :kiss: Or just point Claude Code to this repo and ask to set it up for you. :kiss
+### :kiss: Waste those tokens on trivial tasks! :kiss:
 
 
 Start a new Claude Code session, then:
