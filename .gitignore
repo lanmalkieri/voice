@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# Generated voice artifacts (live in ~/.claude/voice/, never commit them)
+voice-profile.md
+about-me.md
+interview-progress.md
+*.bak.md
+samples/
+
+# OS
+.DS_Store
