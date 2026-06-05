@@ -1,6 +1,6 @@
 ---
 name: Voice
-description: Writes, rewrites, edits, and reviews any writing in the user's own voice, and builds and maintains that voice profile. Use when drafting or polishing emails, messages, posts, docs, marketing, sales copy, executive comms - or when the user wants to set up, update, or apply their personal writing voice. Strips AI-style tells, applies craft rules, and writes as them. Trigger on /voice, "build my voice", "write this in my voice", or any drafting, editing, or reviewing request.
+description: Writes, rewrites, edits, and reviews any writing in the user's own voice, and builds and maintains that voice profile. Use when drafting or polishing emails, messages, posts, docs, marketing, sales copy, executive comms - or when the user wants to set up, update, or apply their personal writing voice. Strips AI-style tells, applies craft rules, and writes as them. Trigger on /voice, "build my voice", "write this in my voice", or any drafting, editing, or reviewing request. Also captures wording feedback like "I don't like how this is worded" as learnings it reads on future writes.
 ---
 # Voice
 
@@ -19,6 +19,7 @@ One skill that builds the user's writing voice and writes in it. Every piece of 
 - `voice-profile.md` — the full archive: interview verbatim plus sample findings.
 - `about-me.md` — the compact compiled profile. The voice layer the writer reads.
 - `interview-progress.md` — transient, exists only while an interview is mid-flight.
+- `learnings/` — short, dated correction notes captured as you give feedback. Read on every write.
 
 The agents analyze and judge only. The main thread runs the interview, drafts, and writes every file. Subagents can fail silently on writes, so keep writes here.
 
@@ -32,8 +33,8 @@ Read the request and pick one.
 ### Write
 Drafting, rewriting, editing, polishing, replying: any text to produce or improve.
 1. If `~/.claude/voice/about-me.md` is missing, run Build first, then return here. Exception: if the user says skip voice or just write it, draft with `tells.md` and `craft.md` only, and tell them the voice layer is off.
-2. Read `tells.md`, `craft.md`, and `about-me.md`.
-3. Draft in this thread, with full conversation context, under the one rule plus tells plus craft plus voice.
+2. Read `tells.md`, `craft.md`, `about-me.md`, and every note in `~/.claude/voice/learnings/`.
+3. Draft in this thread, with full conversation context, under the one rule plus tells plus craft plus voice plus learnings. Learnings are recent, specific overrides: where one conflicts with the profile or a craft default, the learning wins.
 4. Run `check.py`. Fix until it prints PASS.
 5. For anything substantial or outward-facing (more than a few lines, or going to someone outside), spawn the `critic` agent with the draft, `about-me.md`, and `tells.md`. Apply its fixes, re-run `check.py`.
 6. Output only the final text. Don't mention the rules or the scan unless asked.
@@ -53,6 +54,14 @@ Drafting, rewriting, editing, polishing, replying: any text to produce or improv
    - **No profile yet:** seed a new `voice-profile.md` from the findings (Core identity + Writing-sample analysis + Quick reference), then spawn `compiler` to write `about-me.md`. This bootstraps a voice from writing alone, no interview required. Offer `/voice` afterward to deepen it with the interview.
 4. Confirm what changed: the new laws, phrases, and tells pulled from the sample.
 
+### Learn
+The user pushes back on wording ("I don't like how this is worded", "too formal", "don't open like that", "stop saying X"), states a standing preference ("I prefer Y", "always do Z", "never do W"), or runs `/voice learn [note]`. This is how the voice sharpens through use.
+1. Capture it as ONE short, behavior-changing note. Create `~/.claude/voice/learnings/` if needed, then write `<YYYY-MM-DD>-<slug>.md` containing: the rule (do / avoid), the trigger that prompted it, and a bad/good pair pulled from the actual exchange when there is one.
+2. Keep it specific and additive. If a new note contradicts an old one, the newer wins: update or delete the stale file.
+3. Confirm in one line what you captured.
+
+When the user reacts against something you just wrote, capture the lesson without being asked, then apply it in the rewrite. Fold durable learnings into `about-me.md` on `/voice recompile` or `/voice extend`, then prune their files so the list stays short.
+
 ### Manage
 - `view` — print `about-me.md`.
 - `refresh` — move the old files to `voice-profile.<date>.bak.md` and `about-me.<date>.bak.md`, then run Build from scratch.
@@ -63,6 +72,7 @@ Drafting, rewriting, editing, polishing, replying: any text to produce or improv
 ## Argument
 - `/voice quick` runs the ~25-question build, `/voice full` runs the ~100. Otherwise the builder asks.
 - `/voice sample [paths or pasted text]` analyzes your writing and folds it into the profile (see the Sample intent). Works with or without an existing profile.
+- `/voice learn [note]` records a correction or preference (see the Learn intent). You rarely need it by hand; just say what you do not like and it gets captured.
 
 ## Deterministic check
 ```bash

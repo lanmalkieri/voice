@@ -8,6 +8,7 @@ about-me.md
 interview-progress.md
 *.bak.md
 samples/
+learnings/
 
 # OS
 .DS_Store
