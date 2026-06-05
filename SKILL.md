@@ -78,4 +78,4 @@ When the user reacts against something you just wrote, capture the lesson withou
 ```bash
 printf '%s' "$BODY" | python3 ~/.claude/skills/voice/check.py
 ```
-A draft that prints FAIL does not ship until it prints PASS. Add `--no-llm` to skip the LLM judge. `tells.md` and `craft.md` still apply where the script cannot see.
+A draft that prints FAIL does not ship until it prints PASS. Add `--no-llm` to skip the LLM judge. `tells.md` and `craft.md` still apply where the script cannot see. Words and phrases the user legitimately writes live in `~/.claude/voice/allowlist.txt` (one per line, `#` for comments); the static gate and the LLM judge both skip them, so a real person's vocabulary and signature phrases survive the floor.

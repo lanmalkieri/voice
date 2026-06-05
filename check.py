@@ -226,9 +226,13 @@ BANNED_REGEX = [
     r"\b.+ is dead\.\s*.+ is the future\b",
     r"\bthe (question|issue|problem|answer|goal) is not .+\b",
     r"\bit was never about .+\.\s*it was always about .+\b",
-    r"\bfrom .+ to .+,\s*.+\b",
-    r"\bmore than .+,\s*.+\b",
-    r"\bbeyond .+,\s*.+\b",
+    # false-range DOUBLING only ("from X to Y, from A to B"). The old
+    # "from .+ to .+," was unbounded and, under the former DOTALL whole-document
+    # search, failed any draft with "from" plus a later "to" and comma even in
+    # unrelated paragraphs. A real range ("from 10 to 40 facilities,") is not a
+    # tell. "more than .+," and "beyond .+," were dropped for the same reason:
+    # high false-positive, not grounded in tells.md.
+    r"\bfrom [^,.\n]+ to [^,.\n]+,\s*from [^,.\n]+ to\b",
     # superficial -ing tail: comma + present participle that fakes depth
     r",\s+(highlighting|underscoring|emphasizing|reflecting|symbolizing|"
     r"showcasing|fostering|cultivating|reinforcing|demonstrating|signaling|"
@@ -316,24 +320,59 @@ JUDGE_INSTRUCTION = (
 )
 
 
-def find_static_violations(text):
+def find_static_violations(text, allowlist=None):
+    allowlist = allowlist or set()
     violations = []
     lower = text.lower()
+    lines = lower.splitlines() or [lower]
     for char in BANNED_CHARS:
         if char in text:
             violations.append(f"banned character: {char}")
     for phrase in BANNED_PHRASES:
+        if phrase in allowlist:
+            continue
         if phrase in lower:
             violations.append(f"banned phrase: {phrase}")
     for word in BANNED_WORDS:
+        if word in allowlist:
+            continue
         if re.search(rf"\b{re.escape(word)}\b", lower):
             violations.append(f"banned word: {word}")
     for pattern in BANNED_REGEX:
-        if re.search(pattern, lower, flags=re.DOTALL):
+        # Match per line, never across the whole document. The old DOTALL search
+        # over the full text let an unbounded .+ span unrelated paragraphs, so a
+        # "from" in one paragraph plus a "to" and comma in another failed clean
+        # writing. A paragraph is one line, so within-paragraph formulas still
+        # get caught.
+        if any(re.search(pattern, line) for line in lines):
             violations.append(f"banned pattern: {pattern}")
     for ch in sorted(set(EMOJI_RE.findall(text))):
         violations.append(f"banned emoji: {ch}")
     return sorted(set(violations))
+
+
+ALLOWLIST_PATH = os.environ.get(
+    "ANTI_AI_ALLOWLIST", os.path.expanduser("~/.claude/voice/allowlist.txt")
+)
+
+
+def load_allowlist():
+    """Author-approved words and phrases to exempt from the static bans and the
+    judge. One term per line in ~/.claude/voice/allowlist.txt, lowercased on
+    load; blank lines and lines starting with # are ignored. This lets a real
+    person's vocabulary ("scalable") and signature phrases ("in summary")
+    survive the floor. Patterns are not allowlistable: fix the regex instead.
+    """
+    terms = set()
+    try:
+        with open(ALLOWLIST_PATH, encoding="utf-8") as fh:
+            for raw in fh:
+                term = raw.split("#", 1)[0].strip().lower()
+                if term:
+                    terms.add(term)
+    except OSError:
+        pass
+    return terms
 
 
 def _extract_last_json(s):
@@ -408,7 +447,7 @@ def _run_backend(name, binpath, prompt, timeout):
     return obj, None
 
 
-def llm_judge(text):
+def llm_judge(text, allowlist=None):
     """Return a dict from the LLM judge, or None if the judge did not run.
 
     Backend order is set by ANTI_AI_LLM_BACKEND: auto (codex then claude),
@@ -430,8 +469,15 @@ def llm_judge(text):
     else:
         order = [("codex", codex), ("claude", claude_bin)]
 
+    allow_note = ""
+    if allowlist:
+        allow_note = (
+            "\n\nThe author legitimately uses these words and phrases. Do NOT "
+            "flag them as tells: " + ", ".join(sorted(allowlist)) + "."
+        )
     prompt = (
         JUDGE_RUBRIC
+        + allow_note
         + "\n\nDRAFT TO JUDGE:\n<<<\n"
         + text
         + "\n>>>\n\n"
@@ -452,8 +498,9 @@ def llm_judge(text):
 
 def main():
     text = sys.stdin.read()
-    static = find_static_violations(text)
-    judge = llm_judge(text)
+    allowlist = load_allowlist()
+    static = find_static_violations(text, allowlist)
+    judge = llm_judge(text, allowlist)
 
     llm_violations = []
     llm_note = None
