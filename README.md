@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>A Claude Code skill that learns how you write, then writes as you.</b><br>
-  It strips the tells that scream "an AI wrote this," applies real craft, and speaks in <i>your</i> voice.
+  It strips the indicators that scream "an AI wrote this," and instead writes in <i>your</i> voice.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ## Don't want your writing to sound like this slop?
 
-> "In today's fast-paced world, let's dive in and unlock the full potential of synergy."
+> "a symphony of," "a tapestry of," "delicate balance"
 >
 > "It's not just a spreadsheet, it's a journey toward holistic, data-driven excellence."
 >
@@ -28,74 +28,46 @@
 > "At the end of the day, this isn't about features, it's about empowering stakeholders to thrive."
 >
 > "Furthermore, our best-in-class platform seamlessly elevates your workflow to the next level — because the future is now."
+>
+> "You didn’t just use them—you embodied them."
 
-Five sentences, zero humans. You have read a thousand of them: the cover letter, the LinkedIn post apologizing for existing, the chatbot clearing its throat for two paragraphs before it answers anything. The em dash. The rule of three. The "I hope this helps." `voice` deletes the genre.
+You have read a thousand of these: the cover letter, the LinkedIn posts, the em dash. I cannot stand these things. Every time I see a blog or an article with "it's not x, it's y" I lose my mind. Every time I see "the industry that is quietly taking over the world" I want to never read again. We have lost all prose in a sea of generic. 
+
+But we all obviously want to use AI to write. So how can we make it sound more like we do naturally?
 
 ## The pitch
 
-Much like this README, most AI writing reads the same: smooth, padded, allergic to a real opinion. `voice` fixes that in two moves. It rips out the machine fingerprint, and it rebuilds your actual style from an interview, from your own writing, and from every correction you make along the way.
+`voice` attempts to fix these issues in two ways. Building your voice profile with an interview, and by running a determinstic checker & adversarial model review to always attempt to remove AI tells, and match your true writing style. 
 
-One command, `/voice`, builds your voice and writes in it.
+Simply run the skill, `/voice`, and it will begin to build your voice profile. 
 
-> [!NOTE]
-> This README keeps its own prose clean on purpose. The tool would flag the hype.
-
-### See the difference
-
-<table>
-<tr><th>The model's voice</th><th>Yours</th></tr>
-<tr><td>
-
-> In today's fast-paced world, our robust platform leverages cutting-edge synergy to unlock seamless collaboration. It's not just software, it's a journey.
-
-</td><td>
-
-> A missed handoff never announces itself. The task sits in an inbox over the weekend, the deadline slips, and Monday morning two people each think the other had it.
-
-</td></tr>
-</table>
 
 ## How it works
 
-Three passes on every draft, then a gate that refuses to ship slop.
-
-```mermaid
-flowchart LR
-    A["you ask for writing"] --> B{"voice built?"}
-    B -- no --> C["/voice build<br/>interview + your samples"]
-    C --> D["draft in your voice"]
-    B -- yes --> D
-    D --> E["strip AI tells"]
-    E --> F["apply craft"]
-    F --> G{"check.py"}
-    G -- FAIL --> D
-    G -- PASS --> H["ship it"]
-```
+Three passes run on every draft, then a final deterministic gate & adversarial model review. (If you don't have codex cli or claude code cli, the adversarial review will just fail silently).
 
 - **Strip AI tells** (`tells.md`, enforced by `check.py`): em dashes, validation filler, prefaces, inflated vocabulary, copula avoidance, significance inflation, formula patterns.
 - **Apply craft** (`craft.md`): lead with the point, one idea per sentence, match length to the job, keep a pulse when it is meant to be read.
 - **Write in your voice** (`about-me.md` + `learnings/`): the compiled profile of how you sound, plus every correction you have given. Tells are the floor, your voice is the layer on top.
 
-The one rule behind all of it: every sentence must earn its place, by carrying information or doing real work (a concrete image, rhythm, tension, a real opinion). Everything else gets cut.
+The main rule behind all of it: every sentence must earn its place, by carrying information or doing work (a concrete image, rhythm, tension, a real opinion). 
 
 ## It learns from you twice
 
 **Up front,** when you build it: an interview about how you think and write, plus analysis of writing samples you paste in.
 
-**Continuously,** as you use it. When you say "I don't like how this is worded" or "too formal" or "never open like that," the skill captures the correction as a short note in `~/.claude/voice/learnings/` and reads it on every future write. Your voice sharpens with use instead of drifting.
+**Continuously,** as you use it. When you say "I don't like how this is worded" or "too formal" or "never open like that," the skill captures the correction as a short note in `~/.claude/voice/learnings/` and reads it on every future write. 
 
-```mermaid
-flowchart LR
-    R["you react: 'don't word it like that'"] --> L["captured to learnings/"]
-    L --> W["read on the next write"]
-    W --> R
-```
 
 ## Quickstart
 
 ```bash
 git clone https://github.com/lanmalkieri/voice ~/.claude/skills/voice
+
 ```
+
+### :kiss: Or just point Claude Code to this repo and ask to set it up for you. Waste those tokens on trivial tasks! :kiss:
+
 
 Start a new Claude Code session, then:
 
@@ -104,6 +76,9 @@ Start a new Claude Code session, then:
 /voice quick      the ~25 question core
 /voice sample     paste your writing (or a path) to learn from it
 ```
+
+> [!TIP]
+> Dictate the interview answers instead of typing them. Talking how you actually talk gives a truer voice profile than careful typing. [Wispr Flow](https://wisprflow.ai/) is a solid voice-to-text tool for it.
 
 After that, any writing request comes out in your voice. Tell it "I don't like how this is worded" and the fix sticks.
 
@@ -125,28 +100,11 @@ Write, edit, and review requests route through the skill automatically. So does 
 
 ## The gate (`check.py`)
 
-Two layers run before any draft ships:
+Two layers run before any draft is finalized:
 
 1. **Static checks**: banned characters, phrases, words, regex. Instant, free, always on.
-2. **LLM judge**: a fast model catches AI tone the static list cannot. It runs on whatever you have, codex first, then the Claude Code CLI. Neither installed? It fails open to static only.
+2. **LLM judge**: a fast model catches AI tone the static list cannot. It runs on whatever you have, codex first, then the Claude Code CLI. Neither installed? It fails silently to static only.
 
-```mermaid
-flowchart LR
-    D["draft"] --> S["static checks"]
-    S --> J{"LLM judge"}
-    J --> X["codex"]
-    X -- works --> V["PASS / FAIL"]
-    X -- "missing or fails" --> Y["claude -p"]
-    Y --> V
-    J -. "neither installed" .-> Z["static-only<br/>(fail open)"]
-```
-
-Run it on anything:
-
-```bash
-printf '%s' "your text here" | python3 ~/.claude/skills/voice/check.py
-# add --no-llm for static-only
-```
 
 <details>
 <summary><b>Backend and toggle env vars</b></summary>
@@ -159,7 +117,6 @@ printf '%s' "your text here" | python3 ~/.claude/skills/voice/check.py
 | `ANTI_AI_CODEX_MODEL` | empty | model for `codex -m`. Empty omits `-m` (a forced model can 400 on a ChatGPT-account codex login) |
 | `ANTI_AI_CLAUDE_MODEL` | `haiku` | model for `claude --model` |
 | `ANTI_AI_CODEX_BIN`, `ANTI_AI_CLAUDE_BIN` | from PATH | override the binary path |
-
 </details>
 
 ## Under the hood
@@ -178,12 +135,10 @@ agents/
 
 Three small agents do the isolated jobs (analyze, compile, critique). The main session runs the interview, drafts, captures learnings, and writes the files.
 
-Your profile and learnings live in `~/.claude/voice/` and are gitignored. This repo is the naked skill, ready to fork and make yours.
+Your profile and learnings live in `~/.claude/voice/` and are gitignored. This repo is the naked skill.
 
 ## Good to know
 
 - By default the skill triggers on any writing task and builds a profile before its first write. Say "just write it" to skip the voice layer for a one-off, or edit the Write route in `SKILL.md`.
 - The interview can span sessions. Progress saves to `~/.claude/voice/interview-progress.md` and resumes.
 - Learnings are recent, specific overrides. When one conflicts with the profile, the learning wins. Fold durable ones into the profile with `/voice recompile`.
-
-<p align="center"><sub>A Claude Code skill. Strip the tells. Keep the human.</sub></p>

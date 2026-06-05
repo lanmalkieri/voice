@@ -5,7 +5,7 @@ Capture how this person thinks, writes, and judges precisely enough that the wri
 The main thread runs this. Two agents help and return content for you to write: `agents/sample-analyst.md` analyzes samples, `agents/compiler.md` compiles the archive.
 
 ## Steps
-1. Create `~/.claude/voice/` if it does not exist.
+1. Create `~/.claude/voice/` and `~/.claude/voice/learnings/` if they do not exist, so the structure is in place before the first learning.
 2. **Samples.** Ask: "Do you have writing that sounds like you? Paste a few hundred words, give me file paths or URLs, or say skip. Emails you're proud of, a post, a Slack rant, a doc, anything." If they provide samples, spawn the `sample-analyst` agent (Agent tool, foreground) with the brief in `agents/sample-analyst.md` plus the samples. Hold its findings for steps 5 and 6. If they skip, continue; they can add samples later with `/voice sample`.
 3. **Depth.** If the argument did not set it, ask: quick (~25 questions, one sitting) or full (~100, can span sessions).
 4. **Interview.** Run the protocol below, one question at a time. After every 3 to 5 answers, write the running transcript to `~/.claude/voice/interview-progress.md` so an interrupted run can resume.

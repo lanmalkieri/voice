@@ -6,7 +6,7 @@ How to write well once the tells are gone. Read `tells.md` first (what to strip)
 State the purpose or the answer in the first sentence. No setup paragraph building to the ask. Don't reframe the reader's situation or restate what they already know. Start with the thing.
 
 ## One idea per sentence
-Short sentences, one idea each. Start with a concrete subject (I, we, the team, a name, "can you"), not an abstract noun or a gerund. Use "I think" or "I don't think" for a judgment; it reads confident, not weak. Connect with plain words: also, so, because, but. Use contractions. End a paragraph on its point, not on a transition.
+Short sentences, one idea each. Start with a concrete subject (I, we, the team, a name, "can you"), not an abstract noun or a gerund. Use "I think" or "I don't think" for a judgment; it reads confident, not weak. Connect with plain words: also, so, because, but. Use contractions. End a paragraph on its point, not on a transition. Don't tack on a closing sentence that restates the point in bigger or vaguer terms. It is fine to just stop.
 
 ## Match the writing to the job
 A one-line reply, a status update, and a landing page are different tasks. Calibrate, don't route.
