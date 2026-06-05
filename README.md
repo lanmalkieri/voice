@@ -66,7 +66,7 @@ git clone https://github.com/lanmalkieri/voice ~/.claude/skills/voice
 
 ```
 
-### :kiss: Or just point Claude Code to this repo and ask to set it up for you. :kiss
+### :kiss: Or just point Claude Code to this repo and ask to set it up for you. :kiss:
 ### :kiss: Waste those tokens on trivial tasks! :kiss:
 
 
