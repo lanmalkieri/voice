@@ -31,9 +31,8 @@
 >
 > "You didn’t just use them—you embodied them."
 
-You have read a thousand of these: the cover letter, the LinkedIn posts, the em dash. I cannot stand these things. Every time I see a blog or an article with "it's not x, it's y" I lose my mind. Every time I see "the industry that is quietly taking over the world" I want to never read again. We have lost all prose in a sea of generic. 
+You have read a thousand of these: the cover letter, the LinkedIn posts, the em dash. I cannot stand these things. Every time I see a blog or an article with "it's not x, it's y" I lose my mind. Every time I see "the industry that is quietly taking over the world" I want to never read again. We have lost all prose in a sea of generic AI slop.
 
-But we all obviously want to use AI to write. So how can we make it sound more like we do naturally?
 
 ## The pitch
 
