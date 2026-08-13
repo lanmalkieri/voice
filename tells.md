@@ -66,6 +66,12 @@ Dressing a guess as fact when the real thing is not known. This also violates ve
 - "likely grew up", "maintains a low profile", "presumably", "as of my last update", "while details are scarce, it appears"
 - State what is not known, or cut the section.
 
+## Invented expectations and reactions
+Asserting an internal state nobody stated: what the writer expected, what the reader assumed, what anyone was surprised by. You cannot verify a feeling or an expectation, so it is fabrication even when it reads as harmless connective tissue.
+- "more than we expected", "this was surprising", "surprisingly", "interestingly", "as you'd expect", "we assumed", "you may have noticed", "turns out to be more X than anyone thought"
+- Let the measured fact carry the weight, or cut the clause. The sentence almost always stands without it.
+- Bad: "the timing turns out to matter a lot more than we expected". Good: "the timing changes how much data comes back".
+
 ## Formula patterns
 Rhetorical templates. Avoid the structure even when the words change.
 - "This is not X. This is Y." / "Not X, but Y" / "It's not just X, it's Y"
@@ -115,6 +121,27 @@ Adverbial filler that sounds cinematic and says nothing. Cut it, or replace with
 
 ## Model self-disclosure
 - "As a large language model", "as an AI", "I'm just an AI", "as of my last update". Never reference being a model in the output.
+
+## Content selection (documents)
+Phrase-level rules above test how a sentence is written. These test whether it should exist. Run all three on every sentence of a finished artifact.
+- Information test: if the sentence's information is already on the page, including as an implication of an adjacent rule, delete it. ("Fees accrue as cash is collected" already says nobody pays ahead of collection.)
+- Cold-reader test: the reader has never seen the conversation that produced the document. A sentence that answers a question the document never raises (negating a scenario nobody asked about, scoping out something the reader doesn't know exists, referencing a prior draft or decision) is conversation residue. Delete it, or make the document raise the question first.
+- Genre test: in a rules, terms, or reference doc, every sentence is a rate, definition, rule, example, or term. Rationale, reassurance, and "why we chose this" belong in a different document.
+
+## Compressed noun phrases
+Rolling a whole rule into a dense attributive phrase instead of saying it the way a person would. Reads as clever, parses as alien.
+- "a name that closes", "fee-bearing account", "a revenue-generating relationship", "deal-adjacent work"
+- Unpack into the plain clause: "for a name that closes" to "$1,000 when a deal closes"; "remains fee-bearing" to "still pays its fee".
+
+## Manufactured stakes
+A plain point inflated into a weighted declaration: assigning importance, count, or consequence to what follows instead of just saying it.
+- "the two questions that decide it for us", "that is the one thing that matters", "this is what changes the calculus", "there are three things blocking this", "both are still unanswered"
+- Say the thing without announcing its weight: "I still have questions about X and Y."
+
+## Topic-announcer sentences
+A sentence or fragment whose only job is to announce the topic of the prose after it ("What it does:", "How it works:", "Why this matters:") when that prose would stand alone.
+- Delete the announcer and let the content open the paragraph.
+- This is NOT the label-led line for a discrete data point ("Invoice 1024: ...", "Server B: ..."), which an author's profile may endorse. The tell is a header bolted onto flowing prose; a label on one item in a set of parallel items is fine.
 
 ## Fiction tics (narrative)
 Patterns that give away AI-written prose and dialogue.

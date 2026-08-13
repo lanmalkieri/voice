@@ -5,9 +5,12 @@ Two layers:
   1. Static checks (instant, free): banned characters, phrases, words, regex
      patterns. The floor. Always runs.
   2. LLM judge (optional): the draft and the rubric go to a cheap/fast model that
-     returns a JSON verdict catching AI-tone moves the static list cannot. The
-     judge runs on whichever backend is available: the Codex CLI first, and if
-     codex is not installed it falls back to the Claude Code CLI (claude -p).
+     returns a JSON verdict. The judge is a LINTER: every violation must cite a
+     rule verbatim from tells.md, about-me.md, or a learning, and violations
+     citing rules that do not exist in those files are dropped by this script.
+     Backend: the Codex CLI at low reasoning effort (~11s per lint), falling
+     back to the Claude Code CLI (haiku) — claude -p carries ~100s of CLI
+     harness overhead regardless of model, so it is fallback only.
 
 The LLM layer fails open: if no backend is installed, the judge is disabled, the
 call times out, or the output is unparseable, the static checks still enforce and
@@ -20,8 +23,8 @@ rhythm, imagery, and opinion passes.
 
 Toggles (env):
   ANTI_AI_NO_LLM=1        skip the LLM judge
-  ANTI_AI_LLM_BACKEND     auto (default), codex, or claude. auto tries codex then
-                          claude. codex/claude force that one backend only.
+  ANTI_AI_LLM_BACKEND     auto (default), codex, or claude. auto tries codex
+                          (low effort) then claude. codex/claude force one.
   ANTI_AI_LLM_TIMEOUT     seconds before a backend call is abandoned (default 60).
                           ANTI_AI_CODEX_TIMEOUT is still honored for back-compat.
   ANTI_AI_CODEX_MODEL     model passed to codex -m. Default empty: -m is omitted
@@ -33,17 +36,47 @@ Toggles (env):
 CLI:
   --no-llm                same as ANTI_AI_NO_LLM=1
 """
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 
 BANNED_CHARS = ["—", "–", "“", "”"]
 
 BANNED_PHRASES = [
+    # announcer phrases: frame information instead of delivering it. Delete the
+    # frame and state the thing.
+    "worth flagging",
+    "worth noting",
+    "worth calling out",
+    "worth mentioning",
+    "one thing to be aware of",
+    "a few things to keep in mind",
+    "things to keep in mind",
+    "things to think through",
+    "some open questions",
+    "a couple of considerations",
+    "a few considerations",
+    # meta-narration about my own work / self-deprecation. The reader needs the
+    # result, not the history of how it got that way.
+    "instead of me",
+    "rather than me",
+    "hand-waving",
+    "handwaving",
+    "i should have caught",
+    "i should have flagged",
+    "good catch",
+    "my bad",
+    "as i mentioned earlier",
     # validation / sycophancy
+    "take it for granted",
+    "real movement",
+    "i appreciate the movement",
+    "that's a step in the right direction",
     "that's real",
     "you're valid",
     "that's valid",
@@ -192,6 +225,9 @@ BANNED_PHRASES = [
 ]
 
 BANNED_WORDS = [
+    # Reaction adverbs: narrate a feeling the writer cannot verify anyone had.
+    # See learnings/2026-08-04-no-invented-expectations-or-reactions.md
+    "surprisingly", "interestingly", "unsurprisingly",
     "delve", "tapestry", "realm", "landscape", "ecosystem", "synergy",
     "paradigm", "journey", "robust", "seamless", "pivotal", "crucial",
     "vital", "essential", "transformative", "groundbreaking", "cutting-edge",
@@ -215,6 +251,16 @@ BANNED_WORDS = [
 ]
 
 BANNED_REGEX = [
+    # Narrating adverbs bolted onto a verb: pure AI drama, zero information.
+    # See learnings/2026-08-02-no-quietly-adverb-narration.md
+    r"\b(quietly|steadily|gradually|inevitably|invariably)\s+\w+",
+    # Invented expectations / reactions: asserting an internal state nobody stated.
+    # Unverifiable by construction, so it is fabrication.
+    # See learnings/2026-08-04-no-invented-expectations-or-reactions.md
+    r"\bthan (we|I|you|anyone|they) (expected|thought|assumed|anticipated)\b",
+    r"\b(we|I|you|they) (had )?(expected|assumed|anticipated) (that|it|this)\b",
+    r"\bas you('d| would| might)? (expect|know|imagine)\b",
+    r"\byou (may|might) have noticed\b",
     r"\bnot only\b.+\bbut also\b",
     r"\bnot just\b.+\bbut\b",
     r"\bnot merely\b.+\bbut\b",
@@ -318,6 +364,85 @@ JUDGE_INSTRUCTION = (
     '[{"quote":"the offending text","rule":"which rule","fix":"a concrete rewrite"}]}. '
     "If the draft is clean, return verdict PASS with an empty violations list."
 )
+
+VOICE_DIR = os.environ.get("ANTI_AI_VOICE_DIR", os.path.expanduser("~/.claude/voice"))
+SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
+ABOUT_PATH = os.environ.get("ANTI_AI_ABOUT", os.path.join(VOICE_DIR, "about-me.md"))
+LEARNINGS_DIR = os.environ.get("ANTI_AI_LEARNINGS", os.path.join(VOICE_DIR, "learnings"))
+TELLS_PATH = os.environ.get("ANTI_AI_TELLS", os.path.join(SKILL_DIR, "tells.md"))
+RECEIPTS_DIR = os.environ.get("ANTI_AI_RECEIPTS_DIR", os.path.join(VOICE_DIR, "receipts"))
+RECEIPT_TTL = 24 * 3600  # receipts older than this are pruned on each write
+
+VOICE_JUDGE_RUBRIC = """You are a style LINTER, not an editor. Your job is mechanical: check the draft against an explicit rulebook and report only violations of rules in that rulebook. You are not judging quality. Do not improve, tighten, or re-taste the writing. A draft that violates no rule is a PASS even if you could write it better. You do not have to find anything; most clean drafts PASS.
+
+THE RULEBOOK, in increasing authority:
+1. THE FLOOR (tells.md): universal AI tells.
+2. THEIR VOICE (about-me.md): this author's own laws. A law here makes a pattern LEGAL for them even if it looks like a tell to you (flat imperatives, colon-led label lines, comma splices, lowercase names, EG/eg).
+3. THEIR LEARNINGS: dated corrections, highest authority. Apply each learning ONLY to what its text literally states. Never generalize a learning to nearby cases. When unsure whether a learning applies, it does not apply.
+
+A violation exists ONLY when you can point at the specific rule the quoted text breaks. In each violation's "rule" field, cite the rule by quoting it VERBATIM from the rulebook, prefixed with its source tag:
+  floor: <verbatim text copied from tells.md>
+  law: <verbatim text copied from about-me.md>
+  learning:<file name>: <verbatim text copied from that learning>
+A violation whose rule you cannot quote verbatim from the rulebook does not exist. Do not report it. Invented rules are discarded by the harness and waste the run.
+
+Never flag:
+- anything an about-me.md law or the allowlist endorses,
+- sentence shapes and mechanics: imperatives, fragments, comma splices, long comma-chained sentences, casing and capitalization choices, product-name spellings,
+- content, facts, structure, tone, or wording you merely find awkward. Awkward is not a rule,
+- a rule you remember from somewhere else. If it is not in the rulebook below, it does not exist.
+
+Return PASS with an empty violations list unless a named rule is broken."""
+
+
+def _read_file(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _laws_only(about):
+    """The judge lints against rules, so it gets the rule-bearing sections of
+    about-me.md (usage + laws), not the whole profile — the full profile more
+    than doubles the prompt and slows every lint. The verbatim-rule validator
+    still checks quotes against the FULL profile text."""
+    sections = re.findall(
+        r"<(usage|writing_laws|communication_laws)>.*?</\1>", about, re.DOTALL
+    )
+    if not sections:
+        return about
+    return "\n\n".join(
+        m.group(0)
+        for m in re.finditer(
+            r"<(usage|writing_laws|communication_laws)>.*?</\1>", about, re.DOTALL
+        )
+    )
+
+
+def load_voice_context():
+    """Load the author's voice so the judge checks "does this sound like THEM",
+    not just "is this generic AI slop". Returns None when no profile exists, in
+    which case the judge falls back to the generic rubric (so the tool still
+    works for someone who has not built a voice yet)."""
+    about = _read_file(ABOUT_PATH)
+    if not about:
+        return None
+    learnings = []
+    try:
+        for name in sorted(os.listdir(LEARNINGS_DIR)):
+            if name.endswith(".md"):
+                body = _read_file(os.path.join(LEARNINGS_DIR, name))
+                if body:
+                    learnings.append(f"## {name}\n{body}")
+    except OSError:
+        pass
+    return {
+        "about": about,
+        "tells": _read_file(TELLS_PATH),
+        "learnings": "\n\n".join(learnings),
+    }
 
 
 def find_static_violations(text, allowlist=None):
@@ -428,6 +553,11 @@ def _claude_cmd(claude_bin, prompt):
         claude_bin, "-p", prompt,
         "--model", model,
         "--output-format", "text",
+        # A bare `claude -p` boots the user's full config including MCP
+        # servers, which alone blows past the 60s judge timeout. An empty
+        # strict MCP config makes startup ~10s total on haiku.
+        "--strict-mcp-config",
+        "--mcp-config", '{"mcpServers":{}}',
     ]
 
 
@@ -447,12 +577,15 @@ def _run_backend(name, binpath, prompt, timeout):
     return obj, None
 
 
-def llm_judge(text, allowlist=None):
+def llm_judge(text, allowlist=None, ctx=None, changed_lines=None):
     """Return a dict from the LLM judge, or None if the judge did not run.
 
-    Backend order is set by ANTI_AI_LLM_BACKEND: auto (codex then claude),
-    codex (codex only), or claude (claude only). A backend with no binary, or
-    that fails, is skipped; in auto mode the next backend is tried.
+    Backend order is set by ANTI_AI_LLM_BACKEND: auto (claude/haiku then
+    codex), codex (codex only), or claude (claude only). A backend with no
+    binary, or that fails, is skipped; in auto mode the next backend is tried.
+
+    `changed_lines`, when given, puts the judge in revision mode: unchanged
+    lines from the previously linted draft are settled and out of scope.
     """
     if os.environ.get("ANTI_AI_NO_LLM") == "1" or "--no-llm" in sys.argv:
         return None
@@ -467,6 +600,9 @@ def llm_judge(text, allowlist=None):
     elif backend == "claude":
         order = [("claude", claude_bin)]
     else:
+        # codex at low reasoning effort: ~11s per lint with the trimmed
+        # rulebook prompt. claude -p (any model, incl haiku) costs ~100s in
+        # CLI harness overhead alone, so it is the fallback, not the default.
         order = [("codex", codex), ("claude", claude_bin)]
 
     allow_note = ""
@@ -475,9 +611,35 @@ def llm_judge(text, allowlist=None):
             "\n\nThe author legitimately uses these words and phrases. Do NOT "
             "flag them as tells: " + ", ".join(sorted(allowlist)) + "."
         )
+    if ctx is None:
+        ctx = load_voice_context()
+    if ctx:
+        rubric = VOICE_JUDGE_RUBRIC
+        refs = "\n\n=== THE FLOOR (tells.md) ===\n" + ctx["tells"]
+        refs += "\n\n=== THEIR VOICE (about-me.md, laws) ===\n" + _laws_only(
+            ctx["about"]
+        )
+        if ctx["learnings"]:
+            refs += (
+                "\n\n=== THEIR LEARNINGS (these override everything above) ===\n"
+                + ctx["learnings"]
+            )
+    else:
+        rubric = JUDGE_RUBRIC
+        refs = ""
+    revision_note = ""
+    if changed_lines:
+        revision_note = (
+            "\n\nREVISION MODE: this draft is a revision of one you already "
+            "linted. Every unchanged line is settled: do not flag it. Only "
+            "these new or changed lines are in scope:\n"
+            + "\n".join(f"> {line}" for line in changed_lines)
+        )
     prompt = (
-        JUDGE_RUBRIC
+        rubric
+        + refs
         + allow_note
+        + revision_note
         + "\n\nDRAFT TO JUDGE:\n<<<\n"
         + text
         + "\n>>>\n\n"
@@ -496,39 +658,214 @@ def llm_judge(text, allowlist=None):
     return {"error": "; ".join(tried) if tried else "no llm backend found"}
 
 
+def _norm(text):
+    # CRLF->LF, strip. voice-gate.py and the outbound guard use the SAME
+    # normalization so a receipt matches the sent body despite line-ending or
+    # trailing-newline drift between the gated draft and the outbound payload.
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _norm_ws(s):
+    return re.sub(r"\s+", " ", s or "").strip().lower()
+
+
+def _norm_rule(s):
+    # For rule-quote validation only: judges reassemble markdown (heading +
+    # body joined with ": ", "- " prefixes), so match on letters/digits alone.
+    # Whitespace becomes a space FIRST, so punctuation removal cannot glue
+    # words across line breaks ("sentences\nA" must not become "sentencesa").
+    flat = re.sub(r"\s+", " ", (s or "").lower())
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", flat)).strip()
+
+
+def validate_llm_violations(violations, ctx):
+    """Enforce the linter contract mechanically: keep only violations whose
+    "rule" field quotes a rule that actually exists in the rulebook, tagged
+    floor:/law:/learning:<file>:. Everything else is an invented rule and is
+    dropped. Returns (kept, dropped)."""
+    kept, dropped = [], []
+    floor_ref = _norm_rule(ctx.get("tells", "")) if ctx else ""
+    law_ref = _norm_rule(ctx.get("about", "")) if ctx else ""
+    for v in violations:
+        rule = (v.get("rule") or "").strip()
+        m = re.match(r"^(floor|law|learning)\s*:\s*(.*)$", rule, re.IGNORECASE | re.DOTALL)
+        ok = False
+        if m:
+            tag, body = m.group(1).lower(), m.group(2).strip()
+            if tag == "learning":
+                m2 = re.match(r"^([^:]+?\.md)\s*:\s*(.*)$", body, re.DOTALL)
+                if m2:
+                    ref = _norm_rule(
+                        _read_file(os.path.join(LEARNINGS_DIR, m2.group(1).strip()))
+                    )
+                    quoted = _norm_rule(m2.group(2))
+                    ok = len(quoted) >= 15 and quoted[:40] in ref
+            else:
+                quoted = _norm_rule(body)
+                ref = floor_ref if tag == "floor" else law_ref
+                ok = len(quoted) >= 15 and quoted[:40] in ref
+        (kept if ok else dropped).append(v)
+    return kept, dropped
+
+
+def _lint_state_path():
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if not sid:
+        return None
+    return os.path.join(VOICE_DIR, "sessions", sid, "lint-state.json")
+
+
+def load_lint_state():
+    path = _lint_state_path()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_lint_state(text_n, llm_note, llm_violations):
+    """Persist the llm outcome for this session's draft so re-runs converge:
+    an identical draft reuses the verdict, an edited draft is judged only on
+    its changed lines. Static checks always re-run in full."""
+    path = _lint_state_path()
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {"text": text_n, "llm_note": llm_note, "llm_violations": llm_violations},
+                fh,
+            )
+    except OSError:
+        pass
+
+
+def _prune_receipts(now):
+    """Drop receipt files older than RECEIPT_TTL so the content-keyed set can't
+    grow unbounded. Best-effort; a re-gated draft just refreshes its own file's
+    mtime, so live drafts survive."""
+    try:
+        for name in os.listdir(RECEIPTS_DIR):
+            path = os.path.join(RECEIPTS_DIR, name)
+            try:
+                if now - os.path.getmtime(path) > RECEIPT_TTL:
+                    os.remove(path)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def _write_receipt(text, failed, judge_skipped=False):
+    """Record a content-keyed PASS receipt so the Stop-hook gate and the outbound
+    guard can confirm this exact text passed the full gate (judge included)
+    without re-running the nondeterministic judge.
+
+    Receipts are a SET, not a single file: one file per passing body, named by
+    its normalized sha256, under RECEIPTS_DIR. That makes concurrent voice
+    drafts safe - two sessions each drop their own receipt instead of clobbering
+    one shared file, so one agent's PASS (or FAIL) can never invalidate
+    another's gated draft. On FAIL we write nothing and delete nothing: a
+    receipt for OTHER (already-passed) text is not ours to remove, and the
+    failing text simply has no receipt of its own. When the judge did not run
+    (--no-llm / ANTI_AI_NO_LLM) leave the set untouched, so the gate's own
+    --no-llm diagnostic run cannot forge a receipt. Best-effort: never raises."""
+    if judge_skipped or failed:
+        return
+    try:
+        os.makedirs(RECEIPTS_DIR, exist_ok=True)
+        digest = hashlib.sha256(_norm(text).encode("utf-8")).hexdigest()
+        with open(os.path.join(RECEIPTS_DIR, digest), "w", encoding="utf-8") as fh:
+            fh.write(str(int(time.time())))
+        _prune_receipts(time.time())
+    except OSError:
+        pass
+
+
 def main():
     text = sys.stdin.read()
     allowlist = load_allowlist()
     static = find_static_violations(text, allowlist)
-    judge = llm_judge(text, allowlist)
+    ctx = load_voice_context()
+
+    # Convergence: within one session, an identical draft reuses the llm
+    # verdict, and an edited draft is judged on its changed lines only.
+    text_n = _norm(text)
+    state = load_lint_state()
+    changed_lines = None
+    cached = None
+    if state:
+        if state.get("text") == text_n:
+            cached = state
+        else:
+            prev_lines = {
+                line for line in state.get("text", "").splitlines() if line.strip()
+            }
+            changed_lines = [
+                line
+                for line in text_n.splitlines()
+                if line.strip() and line not in prev_lines
+            ]
 
     llm_violations = []
+    dropped_notes = []
     llm_note = None
-    if judge is None:
-        llm_note = "llm judge: skipped"
-    elif "error" in judge:
-        llm_note = f"llm judge: unavailable ({judge['error']}), static checks only"
+    judge_skipped = False
+    if cached is not None:
+        llm_violations = list(cached.get("llm_violations", []))
+        llm_note = (cached.get("llm_note") or "llm judge") + " [cached, draft unchanged]"
     else:
-        backend = judge.get("_backend", "?")
-        verdict = str(judge.get("verdict", "")).upper()
-        if verdict == "FAIL":
-            for v in judge.get("violations", []):
-                quote = v.get("quote", "").strip()
-                rule = v.get("rule", "").strip()
-                fix = v.get("fix", "").strip()
+        judge = llm_judge(text, allowlist, ctx=ctx, changed_lines=changed_lines)
+        if judge is None:
+            judge_skipped = True
+            llm_note = "llm judge: skipped"
+        elif "error" in judge:
+            # Fail CLOSED: a judge that could not run (all backends errored or
+            # timed out) must never yield a PASS or a receipt.
+            llm_note = f"llm judge: unavailable ({judge['error']})"
+            llm_violations.append(
+                f"llm judge did not run ({judge['error']}); failing closed "
+                "(voice unverified, no PASS receipt written) - re-run the gate"
+            )
+        else:
+            backend = judge.get("_backend", "?")
+            verdict = str(judge.get("verdict", "")).upper()
+            raw = judge.get("violations", []) if verdict == "FAIL" else []
+            kept, dropped = (
+                validate_llm_violations(raw, ctx) if ctx else (raw, [])
+            )
+            for v in dropped:
+                dropped_notes.append(
+                    "dropped (cites no rulebook rule): "
+                    f"{(v.get('quote') or '')[:70]}  [{(v.get('rule') or '')[:70]}]"
+                )
+            for v in kept:
+                quote = (v.get("quote") or "").strip()
+                rule = (v.get("rule") or "").strip()
+                fix = (v.get("fix") or "").strip()
                 line = f"llm: {quote}".rstrip()
                 if rule:
                     line += f"  [{rule}]"
                 if fix:
                     line += f"  -> {fix}"
                 llm_violations.append(line)
-            if not llm_violations:
+            if verdict == "FAIL" and not raw:
                 llm_violations.append("llm: FAIL (no detail returned)")
-            llm_note = f"llm judge: FAIL (via {backend})"
-        else:
-            llm_note = f"llm judge: PASS (via {backend})"
+            if llm_violations:
+                llm_note = f"llm judge: FAIL (via {backend})"
+            else:
+                llm_note = f"llm judge: PASS (via {backend}"
+                if dropped:
+                    llm_note += f"; {len(dropped)} invented flag(s) dropped"
+                llm_note += ")"
+            save_lint_state(text_n, llm_note, llm_violations)
 
     failed = bool(static) or bool(llm_violations)
+    _write_receipt(text, failed, judge_skipped)
     print("FAIL" if failed else "PASS")
     for v in static:
         print(f"- {v}")
@@ -536,6 +873,8 @@ def main():
         print(f"- {v}")
     if llm_note:
         print(f"# {llm_note}")
+    for note in dropped_notes:
+        print(f"# {note}")
     return 1 if failed else 0
 
 
